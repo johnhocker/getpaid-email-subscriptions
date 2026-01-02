@@ -15,7 +15,7 @@ function gpes_register_invoice_meta_box() {
 			'gpes-email-subscription',
 			'Email Subscription Details',
 			'gpes_render_invoice_meta_box',
-			'wpi_invoice',
+			GPES_INVOICE_POST_TYPE,
 			'normal',
 			'default'
 			);
@@ -69,7 +69,7 @@ function gpes_render_invoice_meta_box( $post ) {
 /**
  * Save invoice meta
  */
-add_action( 'save_post_wpinv_invoice', 'gpes_save_invoice_meta', 10, 2 );
+add_action( 'save_post_'.GPES_INVOICE_POST_TYPE, 'gpes_save_invoice_meta', 10, 2 );
 
 function gpes_save_invoice_meta( $post_id, $post ) {
 

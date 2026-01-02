@@ -2,6 +2,8 @@
 
 define( 'GPES_META_EMAILS', 'email_addresses_paid_for' );
 define( 'GPES_META_QUANTITY', 'email_quantity_allowed' );
+define( 'GPES_INVOICE_POST_TYPE', 'wpi_invoice' );
+
 
 
 function gpes_normalize_email_list( $emails ) {
