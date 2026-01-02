@@ -87,3 +87,19 @@ function gpes_get_dedupe_key( $post, $invoice = null ) {
 
 	return 'post_' . $post->ID;
 }
+
+
+/**
+ * Convert a normalized array of emails into an HTML-escaped string, one per line.
+ *
+ * @param array $emails Normalized array of emails.
+ * @return string HTML string with emails separated by <br>.
+ */
+function gpes_emails_to_html_lines( array $emails ) : string {
+	if ( empty( $emails ) ) {
+		return '';
+	}
+
+	$escaped = array_map( 'esc_html', $emails );
+	return implode( '<br />', $escaped );
+}
