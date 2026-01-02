@@ -53,3 +53,37 @@ function gpes_get_emails_for_invoice( $invoice ) {
 
 	return gpes_normalize_email_list( $emails );
 }
+
+function gpes_normalize_search_input( $raw ) {
+
+	if ( empty( $raw ) ) {
+		return [];
+	}
+
+	$lines_array = preg_split( '/\r\n|\r|\n/', $raw );
+
+	if ( empty( $lines_array ) ) {
+		return [];
+	}
+
+	return array_filter(
+			array_map(
+					function ( $line ) {
+						return strtolower( trim( $line ) );
+					},
+					$lines_array
+					)
+			);
+}
+
+function gpes_get_dedupe_key( $post, $invoice = null ) {
+
+	if ( $invoice && method_exists( $invoice, 'get_subscription_id' ) ) {
+		$sub_id = $invoice->get_subscription_id();
+		if ( $sub_id ) {
+			return 'sub_' . $sub_id;
+		}
+	}
+
+	return 'post_' . $post->ID;
+}

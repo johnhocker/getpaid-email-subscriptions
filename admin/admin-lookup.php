@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Admin submenu
  */
@@ -36,7 +35,7 @@ add_action( 'admin_menu', function () {
 		fputcsv( $out, [
 				'Email',
 				'Record Type',
-				'Record ID',
+				'Invoice ID',
 				'Subscription Status',
 				'Customer Name',
 				'Customer Email',
@@ -46,85 +45,14 @@ add_action( 'admin_menu', function () {
 
 		foreach ( $emails as $email ) {
 
-			$post_ids = $wpdb->get_col(
-				$wpdb->prepare(
-					"
-					SELECT pm.post_id
-					FROM {$wpdb->postmeta} pm
-					INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-					WHERE pm.meta_key = %s
-					  AND pm.meta_value LIKE %s
-					  AND (
-						  p.post_type != 'wpi_invoice'
-						  OR p.post_status NOT IN ('draft', 'trash', 'auto-draft')
-					  )
-					",
-					GPES_META_EMAILS,
-					'%' . $wpdb->esc_like( $email ) . '%'
-				)
-			);
+			$invoice_ids = gpes_lookup_invoice_ids_by_email( $email );
 
-			foreach ( $post_ids as $id ) {
+			foreach ( $invoice_ids as $invoice_id ) {
 
-				$post = get_post( $id );
-				if ( ! $post ) {
-					continue;
+				$row = gpes_resolve_invoice_row( $invoice_id, $email );
+				if ( $row ) {
+					fputcsv( $out, $row );
 				}
-
-				$record_type = ucfirst( str_replace( 'wpinv_', '', $post->post_type ) );
-
-				$subscription_status = '';
-				$customer_name	   = '';
-				$customer_email	  = '';
-
-				// Try to resolve invoice → subscription → customer
-				if ( function_exists( 'getpaid_get_invoice' ) && $post->post_type === 'wpi_invoice' ) {
-
-					$invoice = getpaid_get_invoice( $id );
-
-					if ( $invoice ) {
-						$customer = $invoice->get_customer();
-						if ( $customer ) {
-							$customer_name  = $customer->get_name();
-							$customer_email = $customer->get_email();
-						}
-
-						if ( method_exists( $invoice, 'get_subscription_id' ) ) {
-							$sub_id = $invoice->get_subscription_id();
-							if ( $sub_id && function_exists( 'getpaid_get_subscription' ) ) {
-								$sub = getpaid_get_subscription( $sub_id );
-								if ( $sub ) {
-									$subscription_status = $sub->get_status();
-								}
-							}
-						}
-					}
-				}
-
-				// Subscription record directly
-				if ( function_exists( 'getpaid_get_subscription' ) && $post->post_type === 'wpinv_subscription' ) {
-
-					$sub = getpaid_get_subscription( $id );
-
-					if ( $sub ) {
-						$subscription_status = $sub->get_status();
-
-						$customer = $sub->get_customer();
-						if ( $customer ) {
-							$customer_name  = $customer->get_name();
-							$customer_email = $customer->get_email();
-						}
-					}
-				}
-
-				fputcsv( $out, [
-						$email,
-						$record_type,
-						$id,
-						$subscription_status,
-						$customer_name,
-						$customer_email,
-				] );
 			}
 		}
 
@@ -164,9 +92,9 @@ add_action( 'admin_menu', function () {
 				   href="<?php echo esc_url(
 					   add_query_arg(
 						   [
-							   'page'		 => 'gpes-email-lookup',
-							   'emails'	   => rawurlencode( $query ),
-							   'gpes_export'  => 1,
+							   'page'        => 'gpes-email-lookup',
+							   'emails'      => rawurlencode( $query ),
+							   'gpes_export' => 1,
 						   ],
 						   admin_url( 'admin.php' )
 					   )
@@ -186,10 +114,9 @@ add_action( 'admin_menu', function () {
 }
 
 /**
- * Render results
+ * Render results table
  */
 function gpes_render_results( $raw ) {
-	global $wpdb;
 
 	$emails = gpes_normalize_search_input( $raw );
 
@@ -199,88 +126,35 @@ function gpes_render_results( $raw ) {
 
 		echo '<h3>' . esc_html( $email ) . '</h3>';
 
-		$post_ids = $wpdb->get_col(
-			$wpdb->prepare(
-				"
-				SELECT pm.post_id
-				FROM {$wpdb->postmeta} pm
-				INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-				WHERE pm.meta_key = %s
-				  AND pm.meta_value LIKE %s
-				  AND (
-					  p.post_type != 'wpi_invoice'
-					  OR p.post_status NOT IN ('draft', 'trash', 'auto-draft')
-				  )
-				",
-				GPES_META_EMAILS,
-				'%' . $wpdb->esc_like( $email ) . '%'
-			)
-		);
+		$invoice_ids = gpes_lookup_invoice_ids_by_email( $email );
 
-
-		if ( empty( $post_ids ) ) {
+		if ( empty( $invoice_ids ) ) {
 			echo '<p>No matches.</p>';
 			continue;
 		}
 
 		echo '<table class="widefat striped">';
 		echo '<thead>
-				<tr>
-					<th>Type</th>
-					<th>ID</th>
-					<th>Subscription Status</th>
-					<th>Customer</th>
-					<th>Email</th>
-					<th>Action</th>
-				</tr>
-			  </thead><tbody>';
+			<tr>
+				<th>Invoice</th>
+				<th>Subscription Status</th>
+				<th>Customer</th>
+				<th>Email</th>
+				<th>Action</th>
+			</tr>
+		</thead><tbody>';
 
-		foreach ( $post_ids as $id ) {
+		foreach ( $invoice_ids as $invoice_id ) {
 
-			$post = get_post( $id );
-			if ( ! $post ) continue;
-
-			$type   = ucfirst( str_replace( 'wpinv_', '', $post->post_type ) );
-			$status = '';
-			$name   = '';
-			$cemail = '';
-
-			if ( $post->post_type === 'wpi_invoice' && function_exists( 'getpaid_get_invoice' ) ) {
-				$invoice = getpaid_get_invoice( $id );
-				if ( $invoice ) {
-					$customer = $invoice->get_customer();
-					if ( $customer ) {
-						$name   = $customer->get_name();
-						$cemail = $customer->get_email();
-					}
-
-					if ( method_exists( $invoice, 'get_subscription_id' ) ) {
-						$sub_id = $invoice->get_subscription_id();
-						if ( $sub_id && function_exists( 'getpaid_get_subscription' ) ) {
-							$sub = getpaid_get_subscription( $sub_id );
-							if ( $sub ) {
-								$status = $sub->get_status();
-							}
-						}
-					}
-				}
+			$row = gpes_resolve_invoice_row( $invoice_id, $email );
+			if ( ! $row ) {
+				continue;
 			}
 
-			if ( $post->post_type === 'wpinv_subscription' && function_exists( 'getpaid_get_subscription' ) ) {
-				$sub = getpaid_get_subscription( $id );
-				if ( $sub ) {
-					$status = $sub->get_status();
-					$customer = $sub->get_customer();
-					if ( $customer ) {
-						$name   = $customer->get_name();
-						$cemail = $customer->get_email();
-					}
-				}
-			}
+			list( , , $id, $status, $name, $cemail ) = $row;
 
 			echo '<tr>';
-			echo '<td>' . esc_html( $type ) . '</td>';
-			echo '<td>' . intval( $id ) . '</td>';
+			echo '<td>#' . intval( $id ) . '</td>';
 			echo '<td>' . esc_html( $status ) . '</td>';
 			echo '<td>' . esc_html( $name ) . '</td>';
 			echo '<td>' . esc_html( $cemail ) . '</td>';
@@ -292,27 +166,71 @@ function gpes_render_results( $raw ) {
 	}
 }
 
-function gpes_normalize_search_input($raw)
-{
-	if (empty($raw)) {
-		return [];
+/**
+ * Find invoice IDs containing a given email
+ * (excluding draft / trash invoices)
+ */
+function gpes_lookup_invoice_ids_by_email( $email ) {
+	global $wpdb;
+
+	return $wpdb->get_col(
+		$wpdb->prepare(
+			"
+			SELECT pm.post_id
+			FROM {$wpdb->postmeta} pm
+			INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			WHERE pm.meta_key = %s
+			  AND pm.meta_value LIKE %s
+			  AND p.post_type = %s
+			  AND p.post_status NOT IN ('draft', 'trash', 'auto-draft')
+			",
+			GPES_META_EMAILS,
+			'%' . $wpdb->esc_like( $email ) . '%',
+			GPES_INVOICE_POST_TYPE
+		)
+	);
+}
+
+/**
+ * Resolve invoice → subscription → customer
+ */
+function gpes_resolve_invoice_row( $invoice_id, $email ) {
+
+	if ( ! function_exists( 'getpaid_get_invoice' ) ) {
+		return null;
 	}
 
-	$lines_array = preg_split( '/\r\n|\r|\n/', $raw );
-
-	if (empty($lines_array)) {
-		return [];
+	$invoice = getpaid_get_invoice( $invoice_id );
+	if ( ! $invoice ) {
+		return null;
 	}
 
-	$emails = array_filter(
-			array_map(
-					function ( $line ) {
-						return strtolower( trim( $line ) );
-					},
-					$lines_array
-					)
-			);
+	$customer_name  = '';
+	$customer_email = '';
+	$status         = '';
 
-	return $emails;
+	$customer = $invoice->get_customer();
+	if ( $customer ) {
+		$customer_name  = $customer->get_name();
+		$customer_email = $customer->get_email();
+	}
 
+	if ( method_exists( $invoice, 'get_subscription_id' ) ) {
+		$sub_id = $invoice->get_subscription_id();
+		if ( $sub_id && function_exists( 'getpaid_get_subscription' ) ) {
+			$sub = getpaid_get_subscription( $sub_id );
+			if ( $sub ) {
+				$status = $sub->get_status();
+			}
+		}
+	}
+
+	return [
+		$email,
+		'Invoice',
+		$invoice_id,
+		$status,
+		$customer_name,
+		$customer_email,
+	];
 }
