@@ -15,7 +15,7 @@ function gpes_register_invoice_meta_box() {
 			'gpes-email-subscription',
 			'Email Subscription Details',
 			'gpes_render_invoice_meta_box',
-			'wpinv_invoice',
+			'wpi_invoice',
 			'normal',
 			'default'
 			);

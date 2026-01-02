@@ -55,7 +55,7 @@ add_action( 'admin_menu', function () {
 					WHERE pm.meta_key = %s
 					  AND pm.meta_value LIKE %s
 					  AND (
-						  p.post_type != 'wpinv_invoice'
+						  p.post_type != 'wpi_invoice'
 						  OR p.post_status NOT IN ('draft', 'trash', 'auto-draft')
 					  )
 					",
@@ -78,7 +78,7 @@ add_action( 'admin_menu', function () {
 				$customer_email	  = '';
 
 				// Try to resolve invoice → subscription → customer
-				if ( function_exists( 'getpaid_get_invoice' ) && $post->post_type === 'wpinv_invoice' ) {
+				if ( function_exists( 'getpaid_get_invoice' ) && $post->post_type === 'wpi_invoice' ) {
 
 					$invoice = getpaid_get_invoice( $id );
 
@@ -208,7 +208,7 @@ function gpes_render_results( $raw ) {
 				WHERE pm.meta_key = %s
 				  AND pm.meta_value LIKE %s
 				  AND (
-					  p.post_type != 'wpinv_invoice'
+					  p.post_type != 'wpi_invoice'
 					  OR p.post_status NOT IN ('draft', 'trash', 'auto-draft')
 				  )
 				",
@@ -245,7 +245,7 @@ function gpes_render_results( $raw ) {
 			$name   = '';
 			$cemail = '';
 
-			if ( $post->post_type === 'wpinv_invoice' && function_exists( 'getpaid_get_invoice' ) ) {
+			if ( $post->post_type === 'wpi_invoice' && function_exists( 'getpaid_get_invoice' ) ) {
 				$invoice = getpaid_get_invoice( $id );
 				if ( $invoice ) {
 					$customer = $invoice->get_customer();
