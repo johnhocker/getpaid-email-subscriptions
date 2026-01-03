@@ -16,7 +16,7 @@ add_action( 'admin_menu', function () {
 	/**
 	 * CSV export handler
 	 */
-	add_action( 'admin_init', function () {
+/*	add_action( 'admin_init', function () {
 
 		if ( empty( $_GET['gpes_export'] ) || empty( $_GET['emails'] ) ) {
 			return;
@@ -58,7 +58,7 @@ add_action( 'admin_menu', function () {
 
 		fclose( $out );
 		exit;
-	} );
+	} );*/
 
 		/**
 		 * Lookup page UI
@@ -88,7 +88,7 @@ add_action( 'admin_menu', function () {
 			<?php submit_button( 'Search' ); ?>
 
 			<?php if ( $query ) : ?>
-				<a class="button"
+				<!-- <a class="button"
 				   href="<?php echo esc_url(
 					   add_query_arg(
 						   [
@@ -100,7 +100,7 @@ add_action( 'admin_menu', function () {
 					   )
 				   ); ?>">
 					Export CSV
-				</a>
+				</a> -->
 			<?php endif; ?>
 		</form>
 
@@ -128,7 +128,18 @@ function gpes_render_results( $raw ) {
 
 		$invoice_ids = gpes_lookup_invoice_ids_by_email( $email );
 
+
 		if ( empty( $invoice_ids ) ) {
+			echo '<p>No matches.</p>';
+			continue;
+		}
+// 		echo '<pre>'.print_r($invoice_ids,TRUE).'</pre>';
+
+
+		$subs = getpaid_get_subscriptions(['invoice_in' => $invoice_ids]);
+// 		echo '<pre>'.print_r($subs,TRUE).'</pre>';
+
+		if ( empty( $subs ) ) {
 			echo '<p>No matches.</p>';
 			continue;
 		}
@@ -136,29 +147,36 @@ function gpes_render_results( $raw ) {
 		echo '<table class="widefat striped">';
 		echo '<thead>
 			<tr>
-				<th>Invoice</th>
+				<th>Subscription</th>
 				<th>Subscription Status</th>
-				<th>Customer</th>
-				<th>Email</th>
-				<th>Action</th>
+				<th>Customer Name</th>
+				<th>Customer Email</th>
+				<th>Subscption</th>
+				<th>latest Invoice</th>
+				<th>Emails Covered</th>
 			</tr>
 		</thead><tbody>';
 
-		foreach ( $invoice_ids as $invoice_id ) {
+		foreach ( $subs as $subscription ) {
 
-			$row = gpes_resolve_invoice_row( $invoice_id, $email );
+			$row = gpes_resolve_subscription_row_from_invoice( $subscription, $email );
 			if ( ! $row ) {
 				continue;
 			}
+			//echo '<pre>'.print_r($row,TRUE).'</pre>';
 
-			list( , , $id, $status, $name, $cemail ) = $row;
+			$view_sub_url = admin_url(
+				'admin.php?page=wpinv-subscriptions&view=edit&id=' . absint( $row['subscription_id'] )
+			);
 
 			echo '<tr>';
-			echo '<td>#' . intval( $id ) . '</td>';
-			echo '<td>' . esc_html( $status ) . '</td>';
-			echo '<td>' . esc_html( $name ) . '</td>';
-			echo '<td>' . esc_html( $cemail ) . '</td>';
-			echo '<td><a href="' . esc_url( get_edit_post_link( $id ) ) . '">Open</a></td>';
+			echo '<td> <a href="'.$view_sub_url.'" >#' . intval( $row['subscription_id'] ) . '</td>';
+			echo '<td>' . esc_html( $row['subscription_status'] ) . '</td>';
+			echo '<td>' . esc_html( $row['customer_name'] ) . '</td>';
+			echo '<td>' . esc_html( $row['customer_email'] ) . '</td>';
+			echo '<td> <a href="' . esc_url( get_edit_post_link( $row['latest_invoice_id'] ) ) . '">'.$row['latest_invoice_number'].'</a></td>';
+			echo '<td>' . esc_html( $row['sub_data'] ) . '</td>';
+			echo '<td>' . $row['emails_covered'] . '</td>';
 			echo '</tr>';
 		}
 
@@ -176,7 +194,7 @@ function gpes_lookup_invoice_ids_by_email( $email ) {
 	return $wpdb->get_col(
 		$wpdb->prepare(
 			"
-			SELECT pm.post_id
+			SELECT DISTINCT pm.post_id
 			FROM {$wpdb->postmeta} pm
 			INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
 			WHERE pm.meta_key = %s
@@ -196,41 +214,104 @@ function gpes_lookup_invoice_ids_by_email( $email ) {
  */
 function gpes_resolve_invoice_row( $invoice_id, $email ) {
 
-	if ( ! function_exists( 'getpaid_get_invoice' ) ) {
+	if ( ! function_exists( 'wpinv_get_invoice' ) ) {
+		error_log('wpinv_get_invoice does not exist');
 		return null;
 	}
 
-	$invoice = getpaid_get_invoice( $invoice_id );
+	$invoice = wpinv_get_invoice( $invoice_id );
 	if ( ! $invoice ) {
+		error_log('invoice is empty');
 		return null;
 	}
 
-	$customer_name  = '';
-	$customer_email = '';
+	//var_dump( get_class_methods( $invoice ) );
+
+	$customer_name  = $invoice->get_customer_full_name();
+	$customer_email = $invoice->get_customer_email();
 	$status         = '';
+	$sub	        = '';
 
-	$customer = $invoice->get_customer();
-	if ( $customer ) {
-		$customer_name  = $customer->get_name();
-		$customer_email = $customer->get_email();
-	}
+	//$customer = $invoice->get_customer();
+	//if ( $customer ) {
+// 		$customer_name  = $customer->get_name();
+// 		$customer_email = $customer->get_email();
+	//}
 
-	if ( method_exists( $invoice, 'get_subscription_id' ) ) {
-		$sub_id = $invoice->get_subscription_id();
-		if ( $sub_id && function_exists( 'getpaid_get_subscription' ) ) {
-			$sub = getpaid_get_subscription( $sub_id );
+// 	if ( method_exists( $invoice, 'get_subscription_id' ) ) {
+		if ( $invoice->is_recurring() && function_exists( 'getpaid_get_invoice_subscription' ) ) {
+			$sub = getpaid_get_invoice_subscription( $invoice );
 			if ( $sub ) {
 				$status = $sub->get_status();
 			}
 		}
-	}
+// 	}
 
 	return [
-		$email,
-		'Invoice',
-		$invoice_id,
-		$status,
-		$customer_name,
-		$customer_email,
+		'email' => $email,
+		'type' => 'Invoice',
+		'invoice_id' => $invoice_id,
+		'subscription_status' => $status,
+		'custname' => $customer_name,
+		'cust_email' => $customer_email,
+		//	'sub_data' => print_r(get_class_methods($sub),true),
+		//	'invoice_data' => var_export(get_class_methods($invoice),TRUE),
+	];
+}
+
+
+function gpes_get_latest_invoice_for_subscription( $subscription )
+{
+	$parent = $subscription->get_parent_invoice();
+
+	if ( !$parent->exists() ) {
+		return null;
+	}
+
+	$statuses = array_keys( wpinv_get_invoice_statuses() );
+
+	$invoices = get_posts(
+			array(
+					'post_parent' => $parent->get_id(),
+					'numberposts' => 1,
+					'post_status' => $statuses,
+					'orderby'     => 'date',
+					'order'       => 'DESC',
+					'post_type'   => GPES_INVOICE_POST_TYPE,
+			)
+		);
+
+	if (empty($invoices)) {
+		return $parent;
+	}
+
+	return new WPInv_Invoice($invoices[0]);
+
+}
+
+function gpes_resolve_subscription_row_from_invoice( $subscription, $email ) {
+
+	$customer = $subscription->get_customer();
+	$invoice  = gpes_get_latest_invoice_for_subscription( $subscription );
+
+	//echo '<pre>'.print_r($invoice,TRUE).'</pre>';
+
+
+	$emails_covered = '';
+	if (!empty($invoice)) {
+		$emails_listed = gpes_get_emails_for_invoice($invoice);
+		$emails_covered = gpes_emails_to_html_lines($emails_listed);
+	}
+
+
+	return [
+			'search_email'        => $email,
+			'subscription_id'     => $subscription->get_id(),
+			'subscription_status' => $subscription->get_status(),
+			'latest_invoice_id'   => $invoice ? $invoice->get_id() : '',
+			'latest_invoice_number'   => $invoice ? $invoice->get_number() : '',
+			'customer_name'       => $customer ? $customer->display_name : '',
+			'customer_email'      => $customer ? $customer->user_email : '',
+			'emails_covered'      => $emails_covered,
 	];
 }
