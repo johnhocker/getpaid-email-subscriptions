@@ -151,7 +151,6 @@ function gpes_render_results( $raw ) {
 				<th>Subscription Status</th>
 				<th>Customer Name</th>
 				<th>Customer Email</th>
-				<th>Subscption</th>
 				<th>latest Invoice</th>
 				<th>Emails Covered</th>
 			</tr>
@@ -170,7 +169,7 @@ function gpes_render_results( $raw ) {
 			);
 
 			echo '<tr>';
-			echo '<td> <a href="'.$view_sub_url.'" >#' . intval( $row['subscription_id'] ) . '</td>';
+			echo '<td> <a href="'.$view_sub_url.'" >#' . intval( $row['subscription_id'] ) . '</a></td>';
 			echo '<td>' . esc_html( $row['subscription_status'] ) . '</td>';
 			echo '<td>' . esc_html( $row['customer_name'] ) . '</td>';
 			echo '<td>' . esc_html( $row['customer_email'] ) . '</td>';
